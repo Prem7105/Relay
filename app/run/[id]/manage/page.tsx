@@ -59,8 +59,8 @@ export default function Manage() {
   const allItems = accepted.flatMap((q) => q.items);
   const totalItems = allItems.length;
   const doneItems = allItems.filter((i) => i.skipped || i.actualPaise != null).length;
-  const costsRecorded = run.status !== "OPEN" && run.status !== "LOCKED";
-  const canCancel = (run.status === "OPEN" || run.status === "LOCKED") && !costsRecorded;
+  const costsRecorded = allItems.some((item) => item.actualPaise != null);
+  const canCancel = ["OPEN", "LOCKED", "SHOPPING"].includes(run.status) && !costsRecorded;
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "requests", label: "Requests", icon: <Inbox size={16} />, badge: run.pendingCount || undefined },

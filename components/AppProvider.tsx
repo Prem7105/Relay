@@ -13,6 +13,7 @@ interface Ctx {
   createOpen: boolean;
   setCreateOpen: (v: boolean) => void;
   loadError: boolean;
+  retry: () => void;
 }
 
 const C = createContext<Ctx | null>(null);
@@ -32,21 +33,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const skew = useRef(0);
+  const activeUser = useRef("");
+  const requestVersion = useRef(0);
 
   useEffect(() => {
-    setUid(sessionStorage.getItem(KEY) || "prem");
+    const initial = sessionStorage.getItem(KEY) || "prem";
+    activeUser.current = initial;
+    setUid(initial);
   }, []);
 
   const refresh = useCallback(async (uid: string) => {
+    if (uid !== activeUser.current) return;
+    const version = ++requestVersion.current;
     try {
       const r = await fetch("/api/state", { headers: { "x-relay-user": uid }, cache: "no-store" });
       if (!r.ok) throw new Error();
       const s = (await r.json()) as StateView;
+      if (uid !== activeUser.current || version !== requestVersion.current) return;
       skew.current = s.now - Date.now();
       setState(s);
       setLoadError(false);
     } catch {
-      setLoadError(true);
+      if (uid === activeUser.current && version === requestVersion.current) setLoadError(true);
     }
   }, []);
 
@@ -66,6 +74,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setUserId = (id: string) => {
+    if (id === activeUser.current) return;
+    activeUser.current = id;
+    requestVersion.current++;
+    setState(null);
+    setLoadError(false);
     sessionStorage.setItem(KEY, id);
     setUid(id);
   };
@@ -80,6 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [toastMsg]);
 
   const act: Ctx["act"] = async (a, okMsg) => {
+    const actor = userId;
     try {
       const r = await fetch("/api/action", {
         method: "POST",
@@ -87,6 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(a),
       });
       const j = await r.json();
+      if (actor !== activeUser.current) return { ok: false, error: "Identity changed; check My Activity for the action result." };
       if (!r.ok) {
         toast(j.error ?? "Something went wrong", "err");
         refresh(userId);
@@ -102,7 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <C.Provider value={{ state, now, userId, setUserId, act, toast, createOpen, setCreateOpen, loadError }}>
+    <C.Provider value={{ state, now, userId, setUserId, act, toast, createOpen, setCreateOpen, loadError, retry: () => { void refresh(userId); } }}>
       {children}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-[70] flex justify-center px-4 md:bottom-6">
         {toastMsg && (

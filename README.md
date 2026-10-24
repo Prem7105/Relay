@@ -5,11 +5,11 @@ Next.js (App Router) + TypeScript + Tailwind + Lucide + SQLite (Node's built-in 
 
 ## Run
 
-    npm install
+    npm ci
     npm run build && npm start     # http://localhost:3000
     # or: npm run dev
 
-Requires Node 22.5+ (built with Node 24). Data lives in `data/relay.db` (override with `RELAY_DB=path`).
+Requires Node 24.x (`nvm use`; reviewed with Node 24.22.1). Data lives in `data/relay.db` (override with `RELAY_DB=path`).
 Clients poll `/api/state` every 3 seconds; all mutations go through `POST /api/action`, each in one SQLite transaction.
 
 ## Demo
@@ -25,3 +25,13 @@ so separate tabs/devices can play different roles. "Reset demo data" in the same
 - Pickup codes are 4 digits with no attempt rate-limit. Fine for a demo, not for production.
 - Polling, not push. Updates can take up to 3 seconds.
 - `node:sqlite` is flagged experimental by Node and prints a warning at startup.
+
+## Presentation preset
+
+Select Prem in the identity dialog, then **Load stationery demo**. This adds a new run with three pending requests without deleting existing data. Accept all three, lock, and enter row totals of ₹50, ₹20 and ₹30. After payment and pickup, fees total ₹15. Reset only when you intend to erase all shared demo activity.
+
+Discover hides expired runs; existing requests remain in My Activity. Network failures display a retry banner. Cancellation is allowed while shopping only when no item has a recorded purchase amount.
+
+## Checks
+
+Run `npm run typecheck` and `npm run build`. For the API regression test, start a separate instance with `RELAY_DB=/tmp/relay-smoke.db node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3100`, then run `RELAY_TEST_URL=http://127.0.0.1:3100 node scripts/smoke-test.mjs`. **The test resets that instance’s database; never point it at a shared demo or real data.**

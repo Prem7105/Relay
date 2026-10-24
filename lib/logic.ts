@@ -105,7 +105,8 @@ export type Action =
   | { type: "markReady"; runId: number }
   | { type: "markPaid"; requestId: number }
   | { type: "collect"; requestId: number; code: string }
-  | { type: "reset" };
+  | { type: "reset" }
+  | { type: "loadStationeryDemo" };
 
 function loadRun(id: unknown): Row {
   const r = getDb().prepare("SELECT * FROM runs WHERE id = ?").get(Number(id)) as Row | undefined;
@@ -129,6 +130,17 @@ export function applyAction(me: User, a: Action): { ok: true; runId?: number } {
   }
   return tx((db) => {
     switch (a.type) {
+      case "loadStationeryDemo": {
+        const now = Date.now();
+        const id = Number(db.prepare("INSERT INTO runs (shop_id, collector_id, deadline_at, return_at, pickup_point, capacity, fee_paise, note, status, created_at) VALUES ('stationery', ?, ?, ?, 'Hostel B lobby', 3, 500, 'Fictional presentation preset — small items only', 'OPEN', ?)").run(me.id, now + 45 * 60000, now + 90 * 60000, now).lastInsertRowid);
+        const people = ["aryan", "varada", "sanket", "prem"].filter(id => id !== me.id).slice(0, 3);
+        const items: [string, number, number][] = [["A4 notebook", 1, 6000], ["Blue pens", 2, 3000], ["Folder", 1, 4000]];
+        people.forEach((person, index) => {
+          const requestId = Number(db.prepare("INSERT INTO requests (run_id,user_id,status,pickup_code,note,created_at) VALUES (?,?,'PENDING',?,'Demo request',?)").run(id, person, newCode(), now).lastInsertRowid);
+          db.prepare("INSERT INTO items (request_id,name,qty,max_paise) VALUES (?,?,?,?)").run(requestId, ...items[index]);
+        });
+        return { ok: true, runId: id };
+      }
       case "createRun": {
         const now = Date.now();
         const shop = db.prepare("SELECT id FROM shops WHERE id = ?").get(String(a.shopId));
@@ -163,7 +175,7 @@ export function applyAction(me: User, a: Action): { ok: true; runId?: number } {
         const items = Array.isArray(a.items) ? a.items : [];
         if (items.length < 1 || items.length > 8) fail("Add between 1 and 8 items");
         for (const it of items) {
-          if (typeof it.name !== "string" || it.name.trim().length < 1 || it.name.length > 60) fail("Every item needs a name");
+          if (!it || typeof it.name !== "string" || it.name.trim().length < 1 || it.name.length > 60) fail("Every item needs a name");
           if (!isInt(it.qty) || it.qty < 1 || it.qty > 20) fail("Quantity must be 1–20");
           if (!isInt(it.maxPaise) || it.maxPaise < 100 || it.maxPaise > 500000) fail("Budget per item must be ₹1–₹5,000");
         }
@@ -195,6 +207,7 @@ export function applyAction(me: User, a: Action): { ok: true; runId?: number } {
         const run = ownRun(q.run_id, me);
         if (run.status !== "OPEN") fail("The run is locked");
         if (q.status !== "PENDING") fail("This request was already handled");
+        if (typeof a.accept !== "boolean") fail("Accept must be true or false");
         if (a.accept) {
           const accepted = (db.prepare("SELECT COUNT(*) AS n FROM requests WHERE run_id = ? AND status = 'ACCEPTED'").get(run.id) as Row).n;
           if (accepted >= run.capacity) fail(`Capacity reached (${run.capacity}). Decline or lock the run.`);
@@ -215,7 +228,9 @@ export function applyAction(me: User, a: Action): { ok: true; runId?: number } {
 
       case "cancelRun": {
         const run = ownRun(a.runId, me);
-        if (run.status !== "OPEN" && run.status !== "LOCKED") fail("Runs can’t be cancelled once shopping has started");
+        if (!["OPEN", "LOCKED", "SHOPPING"].includes(run.status)) fail("This run can no longer be cancelled");
+        const purchased = db.prepare("SELECT COUNT(*) AS n FROM items i JOIN requests q ON q.id = i.request_id WHERE q.run_id = ? AND i.actual_paise IS NOT NULL").get(run.id) as Row;
+        if (purchased.n > 0) fail("Runs can’t be cancelled after a purchase is recorded");
         db.prepare("UPDATE requests SET status = 'CANCELLED' WHERE run_id = ? AND status IN ('PENDING','ACCEPTED')").run(run.id);
         db.prepare("UPDATE runs SET status = 'CANCELLED' WHERE id = ?").run(run.id);
         return { ok: true };
@@ -280,6 +295,8 @@ export function applyAction(me: User, a: Action): { ok: true; runId?: number } {
         if (left === 0) db.prepare("UPDATE runs SET status = 'COMPLETED' WHERE id = ?").run(run.id);
         return { ok: true };
       }
+      default:
+        return fail("Unsupported action", 400);
     }
   });
 }

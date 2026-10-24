@@ -23,7 +23,7 @@ export default function Discover() {
     if (!state) return [];
     const term = q.trim().toLowerCase();
     return state.runs
-      .filter((r) => r.status === "OPEN")
+      .filter((r) => r.status === "OPEN" && r.deadlineAt > now)
       .filter((r) => (f === "all" ? true : f === "free" ? r.feePaise === 0 : r.category === f))
       .filter((r) => !term || r.shopName.toLowerCase().includes(term) || r.pickupPoint.toLowerCase().includes(term))
       .sort((a, b) => {

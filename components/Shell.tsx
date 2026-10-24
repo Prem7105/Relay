@@ -26,9 +26,10 @@ const NAV = [
 export default function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
-  const { state, userId, setUserId, setCreateOpen, act } = useApp();
+  const { state, userId, setUserId, setCreateOpen, act, loadError, retry } = useApp();
   const [idOpen, setIdOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
   const isActive = (href: string) => (href === "/" ? path === "/" || path.startsWith("/run") : path.startsWith(href));
   const me = state?.me;
 
@@ -81,6 +82,12 @@ export default function Shell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
+      {loadError && (
+        <div role="alert" className="mx-auto mt-4 flex max-w-[1056px] items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <span>Connection lost — updates paused. Displayed information may be out of date.</span>
+          <button className="btn-ghost shrink-0" onClick={retry}>Retry</button>
+        </div>
+      )}
       <main className="mx-auto max-w-[1120px] px-4 pb-32 pt-6 md:px-8 md:pb-16 md:pt-8">{children}</main>
 
       {/* mobile bottom nav */}
@@ -133,6 +140,13 @@ export default function Shell({ children }: { children: ReactNode }) {
           ))}
         </ul>
         <div className="mt-5 border-t border-line pt-4">
+          <button disabled={loadingDemo} className="btn-primary mb-3 w-full" onClick={async () => {
+            setLoadingDemo(true);
+            const result = await act({ type: "loadStationeryDemo" }, "Stationery demo created");
+            setLoadingDemo(false);
+            if (result.ok && result.runId) { setIdOpen(false); router.push(`/run/${result.runId}/manage`); }
+          }}>{loadingDemo ? "Loading…" : "Load stationery demo"}</button>
+          <p className="hint mb-3">Adds a fictional run with three pending requests; existing data stays intact. Select Prem first to match the pitch script.</p>
           <button onClick={() => setConfirmReset(true)} className="btn-ghost w-full">
             <RotateCcw size={16} /> Reset demo data
           </button>
